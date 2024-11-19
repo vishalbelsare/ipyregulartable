@@ -1,67 +1,93 @@
-tests: testpy testjs ## Run all tests
+###############
+# Build Tools #
+###############
+build:  ## build python/javascript
+	python -m build .
 
-testjs: ## Run js tests
-	cd js; yarn test
-
-testpy: ## Run python tests
-	python -m pytest -v ipyregulartable/tests --cov=ipyregulartable --junitxml=python_junit.xml --cov-report=xml --cov-branch
-
-lint: lintpy lintjs  ## run linters
-
-lintpy: ## run python linter
-	python -m flake8 ipyregulartable setup.py
-
-lintjs: ## run js linter
-	cd js; yarn lint
-
-fix: fixpy fixjs  ## Run autopep8/tslint fix
-
-fixpy:  ## run autopep8 fix
-	python -m black ipyregulartable/ setup.py
-
-fixjs:  ## run tslint fix
-	cd js; yarn fix
-
-annotate: ## MyPy type annotation check
-	python -m mypy -s ipyregulartable
-
-annotate_l: ## MyPy type annotation check - count only
-	python -m mypy -s ipyregulartable | wc -l
-
-clean: ## clean the repository
-	find . -name "__pycache__" | xargs  rm -rf
-	find . -name "*.pyc" | xargs rm -rf
-	find . -name ".ipynb_checkpoints" | xargs  rm -rf
-	rm -rf .coverage coverage cover htmlcov logs build dist *.egg-info lib node_modules
-	make -C ./docs clean
-	git clean -fd
-
-docs:  ## make documentation
-	make -C ./docs html
-	open ./docs/_build/html/index.html
+develop:  ## install to site-packages in editable mode
+	python -m pip install --upgrade build pip setuptools twine wheel
+	cd js; yarn
+	python -m pip install -e .[develop]
 
 install:  ## install to site-packages
 	python -m pip install .
 
-serverextension: install ## enable serverextension
-	python -m jupyter serverextension enable --py ipyregulartable
+###########
+# Testing #
+###########
+testpy: ## Clean and Make unit tests
+	python -m pytest -v ipyregulartable/tests --junitxml=junit.xml --cov=ipyregulartable --cov-report=xml:.coverage.xml --cov-branch --cov-fail-under=20 --cov-report term-missing
 
-js:  ## build javascript
-	cd js; yarn
-	cd js; yarn build
+testjs: ## Clean and Make js tests
+	cd js; yarn test
 
-labextension: js ## enable labextension
-	cd js; python -m jupyter labextension install .
+test: tests
+tests: testpy testjs ## run the tests
 
-dist: js  ## create dists
-	rm -rf dist build
-	python setup.py sdist bdist_wheel
+###########
+# Linting #
+###########
+lintpy:  ## lint python with ruff
+	python -m ruff check ipyregulartable
+	python -m ruff format --check ipyregulartable
+
+lintjs:  ## ESlint javascript
+	cd js; yarn lint
+
+lint: lintpy lintjs  ## run linter
+
+fixpy:  ## autoformat python with ruff
+	python -m ruff check --fix ipyregulartable
+	python -m ruff format ipyregulartable
+
+fixjs:  ## ESlint Autofix JS
+	cd js; yarn fix
+
+fix: fixpy fixjs  ## run black/tslint fix
+format: fix
+
+#################
+# Other Checks #
+#################
+check: checks
+
+checks: check-manifest  ## run security, packaging, and other checks
+
+check-manifest:  ## run manifest checker for sdist
+	check-manifest -v
+
+semgrep:  ## run semgrep
+	semgrep ci --config auto
+
+################
+# Distribution #
+################
+dist: clean build  ## create dists
 	python -m twine check dist/*
 
-publish: dist  ## dist to pypi and npm
+publishpy:  ## dist to pypi
 	python -m twine upload dist/* --skip-existing
+
+publishjs:  ## dist to npm
 	cd js; npm publish || echo "can't publish - might already exist"
 
+publish: dist publishpy publishjs  ## dist to pypi and npm
+
+############
+# Cleaning #
+############
+clean: ## clean the repository
+	find . -name "__pycache__" | xargs  rm -rf
+	find . -name "*.pyc" | xargs rm -rf
+	find . -name ".ipynb_checkpoints" | xargs  rm -rf
+	rm -rf .coverage coverage *.xml build dist *.egg-info lib node_modules .pytest_cache *.egg-info
+	rm -rf ipyregulartable/labextension ipyregulartable/nbextension/static/index*
+	cd js && yarn clean
+	git clean -fd
+
+###########
+# Helpers #
+###########
 # Thanks to Francoise at marmelab.com for this
 .DEFAULT_GOAL := help
 help:
@@ -70,4 +96,4 @@ help:
 print-%:
 	@echo '$*=$($*)'
 
-.PHONY: clean install serverextension labextension test tests help docs dist js fix lint fixpy fixjs lintpy lintjs
+.PHONY: testjs testpy tests test lintpy lintjs lint fixpy fixjs fix format checks check check-manifest semgrep build develop install labextension dist publishpy publishjs publish docs clean
